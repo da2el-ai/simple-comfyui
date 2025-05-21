@@ -1,0 +1,73 @@
+# 画像を出力するノード（通常はKSampler）
+output_node_id: 54
+
+# 絶対に必要な設定
+required:
+  -
+    id: "positive"
+    workflow:
+      search_type: "title"
+      search_value: "Positive"
+      input_name: "prompt"
+  -
+    id: "negative"
+    workflow:
+      search_type: "title"
+      search_value: "Negative"
+      input_name: "text1"
+  -
+    id: "checkpoint"
+    workflow:
+      search_type: "id"
+      search_value: 13
+      input_name: "ckpt_name"
+  -
+    id: "seed"
+    workflow:
+      search_type: "class_type"
+      search_value: "D2 KSampler(Advanced)"
+      input_name: "noise_seed"
+
+# 追加ノード
+optional:
+  -
+    id: "size_preset"
+    input:
+      title: "Image Size Preset"
+      type: "list"
+      value: ["D2 Size Slector", "input", "required", preset, 0]
+    workflow:
+      search_type: "class_type"
+      search_value: "D2 Size Slector"
+      input_name: "preset"
+  -
+    id: "width"
+    input:
+      title: "Width"
+      type: "number"
+      default: 1024
+    workflow:
+      search_type: "class_type"
+      search_value: "D2 Size Slector"
+      input_name: "width"
+  -
+    id: "height"
+    input:
+      title: "Height"
+      type: "number"
+      default: 1024
+    workflow:
+      search_type: "class_type"
+      search_value: "D2 Size Slector"
+      input_name: "height"
+  -
+    id: "memo"
+    input:
+      title: "Memo"
+      type: "text"
+    workflow:
+      search_type: "class_type"
+      search_value: "D2 Send Eagle"
+      input_name: "memo_text"
+
+

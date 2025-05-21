@@ -1,0 +1,157 @@
+{
+  "12": {
+    "inputs": {
+      "preset": "custom",
+      "width": 1024,
+      "height": 1024,
+      "swap_dimensions": false,
+      "upscale_factor": 1.0000000000000002,
+      "prescale_factor": 1.0000000000000002,
+      "round_method": "Floor",
+      "batch_size": 1
+    },
+    "class_type": "D2 Size Slector",
+    "_meta": {
+      "title": "D2 Size Slector"
+    }
+  },
+  "13": {
+    "inputs": {
+      "ckpt_name": "_SDXL_Illustrious\\HiyokoDarkness_vpred_v3_20250426.safetensors",
+      "auto_vpred": true,
+      "sampling": "normal",
+      "zsnr": false,
+      "multiplier": 0.6000000000000001
+    },
+    "class_type": "D2 Checkpoint Loader",
+    "_meta": {
+      "title": "D2 Checkpoint Loader"
+    }
+  },
+  "15": {
+    "inputs": {
+      "text": [
+        "53",
+        0
+      ],
+      "seed": 1960,
+      "autorefresh": "No"
+    },
+    "class_type": "DPRandomGenerator",
+    "_meta": {
+      "title": "Random Prompts"
+    }
+  },
+  "37": {
+    "inputs": {
+      "format": "%arg_1:ckpt_name%",
+      "arg_1": [
+        "13",
+        3
+      ]
+    },
+    "class_type": "D2 Filename Template",
+    "_meta": {
+      "title": "D2 Filename Template"
+    }
+  },
+  "53": {
+    "inputs": {
+      "prompt": "",
+      "comment_type": "# + // + /**/",
+      "insert_lora": "CHOOSE",
+      "counter": 2
+    },
+    "class_type": "D2 Prompt",
+    "_meta": {
+      "title": "Positive"
+    }
+  },
+  "54": {
+    "inputs": {
+      "add_noise": "enable",
+      "noise_seed": 364520824758035,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "euler_ancestral",
+      "scheduler": "normal",
+      "start_at_step": 0,
+      "end_at_step": 10000,
+      "return_with_leftover_noise": "disable",
+      "token_normalization": "none",
+      "weight_interpretation": "comfy++",
+      "preview_method": "auto",
+      "positive": [
+        "56",
+        0
+      ],
+      "negative": [
+        "57",
+        0
+      ],
+      "model": [
+        "13",
+        0
+      ],
+      "clip": [
+        "13",
+        1
+      ],
+      "vae": [
+        "13",
+        2
+      ],
+      "latent_image": [
+        "12",
+        5
+      ]
+    },
+    "class_type": "D2 KSampler(Advanced)",
+    "_meta": {
+      "title": "D2 KSampler(Advanced)"
+    }
+  },
+  "56": {
+    "inputs": {
+      "text1": [
+        "15",
+        0
+      ],
+      "text2": "masterpiece, best quality, absurdres, amazing quality, perfect quality, very aesthetic, ",
+      "text3": "",
+      "delimiter": ","
+    },
+    "class_type": "ttN concat",
+    "_meta": {
+      "title": "textConcat"
+    }
+  },
+  "57": {
+    "inputs": {
+      "text1": "",
+      "text2": "chubby, curvy, plump, fat, worst quality, bad quality, error, extra digits, jpeg artifacts, low quality, lowres, signature, text, username, watermark, artist name, bad anatomy, bad hand, blurry, cropped, fewer digits, missing fingers, normal quality, ",
+      "text3": "",
+      "delimiter": ","
+    },
+    "class_type": "ttN concat",
+    "_meta": {
+      "title": "Negative"
+    }
+  },
+  "58": {
+    "inputs": {
+      "filename_prefix": [
+        "37",
+        0
+      ],
+      "images": [
+        "54",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}
