@@ -49,14 +49,7 @@ chmod 755 run.sh
 
 ### Bun で使う
 
-Bun 環境がある人はそちらを使うことも可能です。
-
-※Bun: JavaScriptおよびTypeScriptのランタイム環境
-
-```
-cd simple-comfyui
-bun index.ts
-```
+Pythonに一本化するために削除しました。
 
 
 ## 使用方法
