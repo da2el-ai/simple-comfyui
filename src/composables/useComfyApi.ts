@@ -1,57 +1,31 @@
-import { ref } from 'vue';
-import type { Ref } from 'vue';
 import yaml from 'js-yaml';
-import { useLocalStorage } from '../composables/useLocalStorage';
-import type { TWorkflowConfig, TWorkflowConfigOptionalItem, TWorkflowConfigRequiredItem, TListItemData, TGenerateSetting } from '../types'; 
+import { useComfyStore } from '../stores/comfy';
+// import type { TWorkflowConfig, TWorkflowConfigOptionalItem, TWorkflowConfigRequiredItem, TListItemData, TGenerateSetting } from '../types'; 
+import type { TGenerateSetting } from '../types'; 
 
 export interface ComfyApiOptions {
   endpoint: string;
 }
 
 // ComfyAPIの戻り値の型定義
-export interface ComfyApi {
-  isGenerating: Ref<boolean>;
-  queueCount: Ref<number>;
-  previewImages: Ref<string[]>;
-  listItemData: Ref<TListItemData>;
-  currentWorkflowName: Ref<string>;
-  workflowNameList: Ref<string[]>;
-  getConfig: () => TWorkflowConfig;
+export type TComfyApi = {
   setWorkflow: (workflowName: string) => Promise<any>;
-  findItemFromConfig: (category:"required"|"optional", id:string) => TWorkflowConfigOptionalItem | TWorkflowConfigRequiredItem | null;
   generateImages: (settings: TGenerateSetting) => Promise<void>;
-  clearPreview: () => void;
   cancelGeneration: () => Promise<void>;
-  loadWorkflowConfig: (workflowName: string) => Promise<any>;
   fetchWorkflows: () => Promise<void>;
   initialized: Promise<void>;
-}
-
-// 画像生成のパラメータを定義するインターフェース
-export interface GenerateImagesParams {
-  settings: TGenerateSetting;
-}
+};
 
 // シングルトンインスタンス
-let instance: ComfyApi | null = null;
+let instance: TComfyApi | null = null;
 
 // ComfyAPIを作成する関数
-function createComfyApi(options: ComfyApiOptions): ComfyApi {
-  const { endpoint } = options;
+function createComfyApi(options: ComfyApiOptions): TComfyApi {
+  const store = useComfyStore();
   
-  // 状態
-  const isGenerating = ref(false);
-  const queueCount = ref(0);
-  const previewImages = ref<string[]>([]);
-  const promptIds = ref<string[]>([]);
-  const listItemData = ref<TListItemData>({checkpoint:[]});
-  const objectInfo = ref<any>(null);
-  
-  // ワークフロー関連の状態
-  let workflow: any = null;
-  let config: TWorkflowConfig | null = null;
-  const currentWorkflowName = ref('');
-  const workflowNameList = ref<string[]>([]);
+  // 状態を確実に初期化
+  store.endpoint = options.endpoint;
+  let promptIds: string[] = [];
 
   /**
    * 利用可能なワークフローの一覧を取得
@@ -61,21 +35,13 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
       const response = await fetch('/api/workflows');
       if (response.ok) {
         const workflows = await response.json();
-        workflowNameList.value = workflows || [];
+        store.workflowNameList = workflows || [];
         // console.log("fetchWorkflows", workflowNameList.value);
       }
     } catch (error) {
       console.error('Failed to fetch workflows:', error);
-      workflowNameList.value = [];
+      store.workflowNameList = [];
     }
-  }
-
-  /**
-   * ワークフロー設定を取得
-   * @returns 
-   */
-  function getConfig():TWorkflowConfig{
-    return config as TWorkflowConfig;
   }
 
   /**
@@ -92,17 +58,16 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
       if (!response.ok) {
         throw new Error(`Workflow file not found: ${workflowName}.json`);
       }
-      workflow = await response.json();
+      store.workflow = await response.json();
 
       // ワークフロー設定を読み込む
-      config = await loadWorkflowConfig(workflowName);
-
-      currentWorkflowName.value = workflowName;
+      store.workflowConfig = await loadWorkflowConfig(workflowName);
+      store.currentWorkflowName = workflowName;
 
       // オブジェクト情報を取得
       await fetchObjectInfo();
       
-      return workflow;
+      return store.workflow;
     } catch (error) {
       console.error('Failed to load workflow:', error);
       return null;
@@ -132,35 +97,32 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
    * チェックポイント一覧など取得
    */
   async function fetchObjectInfo() {
-    // LocalStorageを取得
-    const { settings } = useLocalStorage();
-
     try {
-      const response = await fetch(`${endpoint}/object_info`);
-      objectInfo.value = await response.json();
+      const response = await fetch(`/api/object_info`);
+      store.objectInfo = await response.json();
       // console.log('Object info loaded:', objectInfo.value);
 
       // 追加項目データをクリア
-      listItemData.value = {
+      store.listItemData = {
         checkpoint: []
       };
       
       // Checkpointリストを取得
-      if (objectInfo.value && objectInfo.value["D2 Checkpoint Loader"]?.input?.required?.ckpt_name?.[0]) {
-        listItemData.value.checkpoint = objectInfo.value["D2 Checkpoint Loader"].input.required.ckpt_name[0];
-        // console.log(`Fetched checkpoint:`, listItemData.value.checkpoint);
+      if (store.objectInfo && store.objectInfo["D2 Checkpoint Loader"]?.input?.required?.ckpt_name?.[0]) {
+        const ckptList = store.objectInfo["D2 Checkpoint Loader"].input.required.ckpt_name[0];
+        store.listItemData.checkpoint = ckptList.sort((a:string, b:string) => a.localeCompare(b));
 
-        // localStorageに前回の記録がなければ１つめを選択状態にする
-        if(!settings.value.checkpoint){
-          settings.value.checkpoint = listItemData.value.checkpoint[0];
+        // 前回の記録がなければ１つめを選択状態にする
+        if(!store.settings.checkpoint){
+          store.updateSettings({ checkpoint: store.listItemData.checkpoint[0] });
           // console.log("checkpoint デフォルト", settings.value.checkpoint);
         }
       }
 
       // 追加の入力項目でリスト取得が必要なものがあれば取得
-      config?.optional.forEach((item) => {
+      store.workflowConfig?.optional.forEach((item) => {
         if(item.input.value){
-          let current = objectInfo.value;
+          let current = store.objectInfo;
           // 最後の要素（配列のインデックス）を除いて順番に階層を辿る
           for (let i = 0; i < item.input.value.length - 1; i++) {
             if (current && current[item.input.value[i]]) {
@@ -179,13 +141,12 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
             : current && current[lastItem] || [];
           
           // console.log(`Fetched values for ${item.id}:`, values);
-          listItemData.value[item.id] = values;
+          store.listItemData[item.id] = values;
 
-          // localStorageに前回の記録がなければ１つめを選択状態にする
-          if(!settings.value[item.id]){
-            settings.value[item.id] = values[0];
+          // 前回の記録がなければ１つめを選択状態にする
+          if(!store.settings[item.id]){
+            store.updateSettings({ [item.id]: values[0] });
           }
-
         }
       });
 
@@ -194,71 +155,6 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
     }
   }
   
-  /**
-   * ワークフローからノードを検索
-   * @param searchType 
-   * @param searchValue 
-   * @returns 
-   */
-  function findNode(searchType: 'class_type' | 'id' | 'title', searchValue: string | number) {
-    if (!workflow) return null;
-    
-    for (const nodeId in workflow) {
-      const node = workflow[nodeId];
-      
-      switch (searchType) {
-        case 'class_type':
-          if (node.class_type === searchValue) {
-            return node;
-          }
-          break;
-        case 'id':
-          if (nodeId === searchValue.toString()) {
-            return node;
-          }
-          break;
-        case 'title':
-          if (node._meta?.title === searchValue) {
-            return node;
-          }
-          break;
-      }
-    }
-    return null;
-  }
-
-  /**
-   * config から id に合致するアイテムを取得
-   * @param category 
-   * @param id 
-   * @returns 
-   */
-  function findItemFromConfig(category:"required"|"optional", id:string): TWorkflowConfigOptionalItem | TWorkflowConfigRequiredItem | null{
-    if (!config || !config[category]) return null;
-
-    const item = config[category].find(item => item.id === id);
-    if (!item) return null;
-
-    return item;
-  }
-
-  /**
-   * ワークフローに値をセットする
-   * @param category 
-   * @param id 
-   * @param value 
-   * @returns 
-   */
-  function setNodeValueByConfig(category:"required"|"optional", id:string, value:any) {
-    const item = findItemFromConfig(category, id);
-    if(!item) return null;
-
-    const node = findNode(item.workflow.search_type, item.workflow.search_value);
-    if(!node) return null;
-
-    node.inputs[item.workflow.input_name] = value;
-  }
-
 
   /**
    * 画像生成
@@ -266,39 +162,40 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
    * @returns 
    */
   async function generateImages(settings: TGenerateSetting) {
-    if (!workflow || isGenerating.value) return;
-    isGenerating.value = true;
+    if (!store.workflow || store.isGenerating) {
+      // console.log('generateImages early return - workflow:', !!store.workflow, 'isGenerating:', store.isGenerating);
+      return;
+    }
+    
+    store.setGenerating(true);
     
     try {
       // 必須項目の設定
-      setNodeValueByConfig('required', 'positive', settings.positive);
-      setNodeValueByConfig('required', 'negative', settings.negative);
-      setNodeValueByConfig('required', 'checkpoint', settings.checkpoint);
+      store.setNodeValueByConfig('required', 'positive', settings.positive);
+      store.setNodeValueByConfig('required', 'negative', settings.negative);
+      store.setNodeValueByConfig('required', 'checkpoint', settings.checkpoint);
 
       // Optional項目の設定
-      if (config?.optional) {
-        for (const item of config.optional) {
+      if (store.workflowConfig?.optional) {
+        for (const item of store.workflowConfig.optional) {
           if (item.id in settings) {
-            setNodeValueByConfig('optional', item.id, settings[item.id]);
+            store.setNodeValueByConfig('optional', item.id, settings[item.id]);
           }
         }
       }
       
       // バッチ処理
-      promptIds.value = [];
+      promptIds = [];
       for (let i = 0; i < settings.batchCount; i++) {
         // サンプラーノードを検索してシード値を設定
         const randomSeed = Math.floor(Math.random() * 1000000000);
-        setNodeValueByConfig('required', 'seed', randomSeed);
-        // console.log("seed", randomSeed);
+        store.setNodeValueByConfig('required', 'seed', randomSeed);
 
         // リクエストURLとボディをログに出力
-        const requestUrl = `${endpoint}/prompt`;
-        const requestBody = { prompt: workflow };
-        // console.log('Request URL:', requestUrl);
-        // console.log('Request Body:', requestBody);
+        const requestUrl = `${store.endpoint}/prompt`;
+        const requestBody = { prompt: store.workflow };
+        // console.log("[generateImages] requestUrl", requestUrl);
         
-        // プロンプトを送信
         let data;
         try {
           const response = await fetch(requestUrl, {
@@ -309,44 +206,41 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
             body: JSON.stringify(requestBody)
           });
           
-          // console.log('Response status:', response.status);
-          // console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-          
           data = await response.json();
-          // console.log('Response data:', data);
+          if (data && data.prompt_id) {
+            promptIds.push(data.prompt_id);
+            store.setQueueCount(store.queueCount + 1);
+          }
         } catch (error) {
-          console.error('Fetch error details:', error);
-          throw error;
-        }
-        
-        if (data && data.prompt_id) {
-          promptIds.value.push(data.prompt_id);
-          queueCount.value++;
+          console.error('Error in fetch request:', error);
+          throw new Error('画像生成のリクエストに失敗しました。');
         }
       }
       
-      // 画像生成の監視
-      monitorImageGeneration();
+      // 画像生成の監視を待つ
+      await monitorImageGeneration();
     } catch (error) {
-      console.error('Error generating images:', error);
+      console.error('Error in generateImages:', error);
+      throw error;
     } finally {
-      isGenerating.value = false;
+      store.setGenerating(false);
     }
   }
 
   /**
    * 画像生成の監視
+   * @returns Promise<void>
    */
-  async function monitorImageGeneration() {
+  async function monitorImageGeneration(): Promise<void> {
     // console.log('Starting image generation monitoring...');
     
-    while (promptIds.value.length > 0) {
-      const promptId = promptIds.value[0];
+    while (promptIds.length > 0) {
+      const promptId = promptIds[0];
       // console.log(`Monitoring prompt ID: ${promptId}`);
       
       try {
         // 生成状況を取得
-        const historyUrl = `${endpoint}/history/${promptId}`;
+        const historyUrl = `${store.endpoint}/history/${promptId}`;
         // console.log(`Fetching history from: ${historyUrl}`);
         
         const response = await fetch(historyUrl);
@@ -360,23 +254,22 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
           
           // 画像を取得
           // for (const nodeId in data[promptId].outputs) {
-          const nodeId = config?.output_node_id as number;
+          const nodeId = store.workflowConfig?.output_node_id as number;
           const output = data[promptId].outputs[nodeId];
           if (output.images) {
             // console.log(`Found ${output.images.length} images in node ${nodeId}`);
             
             for (const image of output.images) {
               const preview = image.type === "temp" ? '&type=temp' : '';
-              const imageUrl = `${endpoint}/view?filename=${image.filename}${preview}`;
-              // console.log(`Adding image URL: ${imageUrl}`);
-              previewImages.value.unshift(imageUrl);
+              const imageUrl = `/api/get_image?filename=${image.filename}${preview}`;
+              store.previewImages.unshift(imageUrl);
             }
           }
           // }
           
           // 完了したプロンプトIDを削除
-          promptIds.value.shift();
-          queueCount.value--;
+          promptIds.shift();
+          store.setQueueCount(store.queueCount - 1);
           // console.log(`Removed prompt ID from queue. Remaining: ${promptIds.value.length}`);
         } else {
           // console.log(`No outputs found yet for prompt ID: ${promptId}, continuing to poll...`);
@@ -384,9 +277,9 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
       } catch (error) {
         console.error('Error monitoring image generation:', error);
         // エラーが発生した場合も次のプロンプトに進む
-        promptIds.value.shift();
-        queueCount.value--;
-        console.log(`Error occurred, removed prompt ID from queue. Remaining: ${promptIds.value.length}`);
+        promptIds.shift();
+        store.setQueueCount(store.queueCount - 1);
+        console.log(`Error occurred, removed prompt ID from queue. Remaining: ${promptIds.length}`);
       }
       
       // 1秒待機
@@ -397,18 +290,13 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
     // console.log('Image generation monitoring completed.');
   }
   
-  // プレビューをクリア
-  function clearPreview() {
-    previewImages.value = [];
-  }
-  
   // 生成をキャンセル
   async function cancelGeneration() {
     try {
       // console.log('Cancelling generation...');
       
       // キューの状態を取得
-      const queueResponse = await fetch(`${endpoint}/queue`);
+      const queueResponse = await fetch(`${store.endpoint}/queue`);
       const queueData = await queueResponse.json();
       // console.log('Current queue state:', queueData);
       
@@ -443,7 +331,7 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
       
       if (queueIds.length > 0) {
         // キューを削除
-        const deleteResponse = await fetch(`${endpoint}/queue`, {
+        const deleteResponse = await fetch(`${store.endpoint}/queue`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -457,14 +345,14 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
           // キャンセル成功時の処理
           if (runningId) {
             // 実行中のプロンプトIDのみを残す
-            promptIds.value = [runningId];
-            queueCount.value = 1; // 実行中の1個だけカウント
+            promptIds = [runningId];
+            store.setQueueCount(1); // 実行中の1個だけカウント
             // console.log('Pending generations cancelled. Remaining prompt ID:', runningId);
           } else {
             // 実行中のプロンプトIDが取得できなかった場合は全てクリア
-            promptIds.value = [];
-            queueCount.value = 0;
-            isGenerating.value = false;
+            promptIds = [];
+            store.setQueueCount(0);
+            store.setGenerating(false);
             // console.log('All generations cancelled');
           }
         } else {
@@ -475,8 +363,8 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
       }
       
       // 念のため、古い方法も試す
-      // const clearResponse = await fetch(`${endpoint}/queue`, {
-      await fetch(`${endpoint}/queue`, {
+      // const clearResponse = await fetch(`${store.endpoint}/queue`, {
+      await fetch(`${store.endpoint}/queue`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -491,19 +379,9 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
   }
   
   const api = {
-    isGenerating,
-    queueCount,
-    previewImages,
-    listItemData,
-    currentWorkflowName,
-    workflowNameList,
-    getConfig,
     setWorkflow,
-    findItemFromConfig,
     generateImages,
-    clearPreview,
     cancelGeneration,
-    loadWorkflowConfig,
     fetchWorkflows,
     initialized: Promise.resolve()
   };
@@ -514,18 +392,16 @@ function createComfyApi(options: ComfyApiOptions): ComfyApi {
 // シングルトンパターンを実装したuseComfyApi関数
 export function useComfyApi(options?: ComfyApiOptions) {
   if (!instance && options) {
-    console.log("init useComfyApi");
     const api = createComfyApi(options);
-    // LocalStorageを取得
-    const { settings } = useLocalStorage();
+    const store = useComfyStore();
     
     // apiからワークフロー一覧を取得する
     api.initialized = (async () => {
       await api.fetchWorkflows();
-      const workflows = api.workflowNameList.value;
-      const firstWorkflow = workflows && workflows.length > 0 ? workflows[0] : null;
+      const workflows = store.workflowNameList;
+      const firstWorkflow = workflows && workflows.length > 0 ? workflows[0] : "";
       if (firstWorkflow) {
-        await api.setWorkflow(settings.value.workflowName ? settings.value.workflowName as string : firstWorkflow);
+        await api.setWorkflow(store.settings.workflowName ? store.settings.workflowName as string : firstWorkflow);
       }
     })();
     

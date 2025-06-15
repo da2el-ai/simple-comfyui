@@ -1,19 +1,16 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue';
+import { watch, onMounted, onUnmounted } from 'vue';
+import { storeToRefs } from 'pinia';
+import { useComfyStore } from '../stores/comfy';
 
-const props = defineProps<{
-  images: string[];
-  initialIndex: number;
-}>();
+const store = useComfyStore();
+const { previewImages, selectImageIndex } = storeToRefs(store);
 
-const emit = defineEmits(['close']);
-
-const currentIndex = ref(props.initialIndex);
 
 // キーボードイベントのハンドラー
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
-    emit('close');
+    closeGallery();
   } else if (event.key === 'ArrowLeft') {
     prevImage();
   } else if (event.key === 'ArrowRight') {
@@ -21,32 +18,37 @@ function handleKeyDown(event: KeyboardEvent) {
   }
 }
 
+// ギャラリーを閉じる
+const closeGallery = () => {
+  store.galleryOpened = false;
+};
+
 // 次の画像に移動
 function nextImage() {
-  if (currentIndex.value < props.images.length - 1) {
-    currentIndex.value++;
+  if (selectImageIndex.value < previewImages.value.length - 1) {
+    selectImageIndex.value++;
   } else {
-    currentIndex.value = 0; // 最後の画像から最初に戻る
+    selectImageIndex.value = 0; // 最後の画像から最初に戻る
   }
 }
 
 // 前の画像に移動
 function prevImage() {
-  if (currentIndex.value > 0) {
-    currentIndex.value--;
+  if (selectImageIndex.value > 0) {
+    selectImageIndex.value--;
   } else {
-    currentIndex.value = props.images.length - 1; // 最初の画像から最後に移動
+    selectImageIndex.value = previewImages.value.length - 1; // 最初の画像から最後に移動
   }
 }
 
 // サムネイルをクリックして画像を選択
 function selectImage(index: number) {
-  currentIndex.value = index;
+  selectImageIndex.value = index;
 }
 
 // 初期インデックスが変更されたら現在のインデックスを更新
-watch(() => props.initialIndex, (newIndex) => {
-  currentIndex.value = newIndex;
+watch(() => store.selectImageIndex, (newIndex) => {
+  selectImageIndex.value = newIndex;
 });
 
 // コンポーネントがマウントされたときにキーボードイベントリスナーを追加
@@ -65,12 +67,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="gallery-overlay" @click="emit('close')">
+  <div class="gallery-overlay" v-if="store.galleryOpened">
     <div class="gallery-content" @click.stop>
       <!-- 閉じるボタン -->
       <button 
         class="close-button" 
-        @click="emit('close')"
+        @click="closeGallery()"
       >
         &times;
       </button>
@@ -79,7 +81,7 @@ onUnmounted(() => {
       <button 
         class="nav-button prev-button" 
         @click="prevImage"
-        v-if="props.images.length > 1"
+        v-if="previewImages.length > 1"
       >
         &lt;
       </button>
@@ -87,7 +89,7 @@ onUnmounted(() => {
       <!-- メイン画像 -->
       <div class="main-image-container">
         <img 
-          :src="props.images[currentIndex]" 
+          :src="previewImages[selectImageIndex]" 
           class="main-image" 
           alt="Gallery image"
         />
@@ -97,18 +99,17 @@ onUnmounted(() => {
       <button 
         class="nav-button next-button" 
         @click="nextImage"
-        v-if="props.images.length > 1"
+        v-if="previewImages.length > 1"
       >
         &gt;
       </button>
-      
       <!-- サムネイル -->
-      <div class="thumbnails-container" v-if="props.images.length > 1">
+      <div class="thumbnails-container" v-if="previewImages.length > 1">
         <div 
-          v-for="(image, index) in props.images" 
+          v-for="(image, index) in previewImages" 
           :key="index"
           class="thumbnail"
-          :class="{ active: index === currentIndex }"
+          :class="{ active: index === selectImageIndex }"
           @click="selectImage(index)"
         >
           <img :src="image" alt="Thumbnail" />

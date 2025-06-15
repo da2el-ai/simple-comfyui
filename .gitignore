@@ -29,3 +29,5 @@ sample
 config.json
 package-lock.json
 venv
+modules/__pycache__
+.rule

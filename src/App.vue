@@ -8,10 +8,6 @@ import { useComfyApi } from './composables/useComfyApi';
 // ComfyAPI
 const comfyApi = ref();
 
-// UI要素の状態
-const showGallery = ref(false);
-const selectedImageIndex = ref(0);
-
 // ComfyUI Endpointの取得とAPI初期化
 onMounted(async () => {
   const response = await fetch('/api/comfyui_endpoint');
@@ -19,16 +15,6 @@ onMounted(async () => {
   comfyApi.value = useComfyApi({ endpoint });
 });
 
-// ギャラリーを開く
-function openGallery(index: number) {
-  selectedImageIndex.value = index;
-  showGallery.value = true;
-}
-
-// ギャラリーを閉じる
-function closeGallery() {
-  showGallery.value = false;
-}
 </script>
 
 <template>
@@ -38,18 +24,9 @@ function closeGallery() {
     <GenerateSettings v-if="comfyApi" />
 
     <!--  プレビューコンポーネント -->
-    <ImagePreview 
-      v-if="comfyApi"
-      :images="comfyApi.previewImages" 
-      @open="openGallery"
-    />
+    <ImagePreview v-if="comfyApi" />
     
     <!-- ギャラリーコンポーネント -->
-    <ImageGallery 
-      v-if="showGallery && comfyApi" 
-      :images="comfyApi.previewImages" 
-      :initialIndex="selectedImageIndex"
-      @close="closeGallery"
-    />
+    <ImageGallery  v-if="comfyApi" />
   </div>
 </template>

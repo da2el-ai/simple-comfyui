@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, watch, ref, onMounted } from 'vue';
+import { storeToRefs } from 'pinia';
 import { useComfyApi } from '../composables/useComfyApi';
-import { useLocalStorage } from '../composables/useLocalStorage';
+import { useComfyStore } from '../stores/comfy';
 import AutoComplete from './AutoComplete.vue';
 import DynamicInput from './DynamicInput.vue';
 import WeightButtons from './WeightButtons.vue';
@@ -11,11 +12,10 @@ const MAX_BATCH_COUNT = 10;
 
 // ComfyAPIを取得
 const comfyApi = useComfyApi();
-const { isGenerating, queueCount, clearPreview, cancelGeneration, listItemData, currentWorkflowName, workflowNameList } = comfyApi;
+const { cancelGeneration } = comfyApi;
 
-// LocalStorageを取得
-const localStorage = useLocalStorage();
-const settings = localStorage.settings;
+const store = useComfyStore();
+const { settings, isGenerating, queueCount, listItemData, workflowNameList } = storeToRefs(store);
 
 const configData = ref<TWorkflowConfig | null>(null);
 
@@ -64,7 +64,7 @@ watch(() => settings.value.batchCount, (newValue) => {
 // 初期設定の読み込み
 onMounted(async () => {
   await comfyApi.initialized;
-  const config = comfyApi.getConfig();
+  const config = store.workflowConfig;
   if (config) {
     configData.value = config;
   }
@@ -78,13 +78,18 @@ async function handleWorkflowChange(event: Event) {
   settings.value.workflowName = workflowName;
 
   await comfyApi.setWorkflow(workflowName);
-  configData.value = comfyApi.getConfig();
-  // console.log("[GenerateSettings.handleWorkflowChange] config", comfyApi.getConfig());
+  configData.value = store.workflowConfig;
+  // console.log("[GenerateSettings.handleWorkflowChange] config", store.workflowConfig);
 }
 
 // 画像生成
-function generateImages() {
-  comfyApi.generateImages(settings.value);
+async function generateImages() {
+  try {
+    await comfyApi.generateImages(settings.value);
+  } catch (error) {
+    console.error('画像生成に失敗しました:', error);
+    // エラー発生時の処理をここに追加することも可能
+  }
 }
 
 /**
@@ -109,6 +114,7 @@ function getSettingValue(key: string, options?: string[], defaultValue: string |
 </script>
 
 <template>
+
   <section id="generate-settings">
     <div class="mb-4">
       <label class="block text-sm font-medium mb-1">Positive Prompt</label>
@@ -173,7 +179,7 @@ function getSettingValue(key: string, options?: string[], defaultValue: string |
 
       <!-- プレビュー破棄ボタン -->
       <button 
-        @click="clearPreview" 
+        @click="store.clearPreview()" 
         class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
       >
         Clear Preview
@@ -233,7 +239,7 @@ function getSettingValue(key: string, options?: string[], defaultValue: string |
         <div class="w-full">
           <label class="block text-sm font-medium mb-1">Workflow</label>
           <select 
-            :value="currentWorkflowName"
+            :value="store.currentWorkflowName"
             @change="handleWorkflowChange"
             class="w-full p-2 border rounded-md"
           >

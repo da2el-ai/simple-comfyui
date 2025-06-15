@@ -1,10 +1,13 @@
 import os
 import json
 import shutil
+import requests
 from pathlib import Path
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
+from modules.image import compress_image_to_jpeg, get_minified_filename
 
 # パスの設定
 CURRENT_DIR = Path(__file__).parent
@@ -19,6 +22,9 @@ DEFAULT_CONFIG = {
 }
 
 app = FastAPI()
+# GZip圧縮を有効化
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 
 # 設定ファイルを読み込む
 def load_config():
@@ -61,6 +67,63 @@ async def get_workflows():
             {"error": "Failed to get workflow list"},
             status_code=500
         )
+
+# ComfyUI ObjectInfo を中継する（zip圧縮を使うため）
+@app.get("/api/object_info")
+async def get_object_info():
+    try:
+        response = requests.get(f"{config['comfyui_endpoint']}/object_info")
+        response.raise_for_status()
+        return JSONResponse(response.json())
+    except Exception as error:
+        print(f"Error getting object info: {error}")
+        return JSONResponse(
+            {"error": "Failed to get object info"},
+            status_code=500
+        )
+
+@app.get("/api/get_image")
+async def get_image(filename: str = Query(...), type: str = Query(...)):
+    try:
+        # タイプによってフォルダを決定
+        if type == "temp":
+            base_folder = config.get("comfyui_temp_folder", "")
+        else:
+            base_folder = config.get("comfyui_output_folder", "")
+        
+        if not base_folder:
+            return JSONResponse(
+                {"error": f"Folder configuration not found for type: {type}"},
+                status_code=500
+            )
+        
+        # 元の画像ファイルのパス
+        original_path = Path(base_folder) / filename
+        
+        if not original_path.exists():
+            return Response("Image not found", status_code=404)
+        
+        # 圧縮後のファイル名を生成
+        minified_filename = get_minified_filename(filename)
+        minified_path = Path(config.get("comfyui_temp_folder", "")) / minified_filename
+        
+        # 圧縮済みファイルが存在しない場合は圧縮を実行
+        if not minified_path.exists():
+            success = compress_image_to_jpeg(str(original_path), str(minified_path), quality=85)
+            if not success:
+                # 圧縮に失敗した場合は元のファイルを返す
+                return FileResponse(original_path, media_type="image/jpeg")
+        
+        # 圧縮済みファイルを返す
+        return FileResponse(minified_path, media_type="image/jpeg")
+        
+    except Exception as error:
+        print(f"Error getting image: {error}")
+        return JSONResponse(
+            {"error": "Failed to get image"},
+            status_code=500
+        )
+
 
 # 静的ファイルの処理
 @app.get("/{full_path:path}")
