@@ -28,6 +28,10 @@
 git clone https://github.com/da2el-ai/simple-comfyui.git
 ```
 
+## ComfyUIの準備
+
+起動オプションに `--enable-cors-header` を追加して ComfyUI を起動してください。
+
 ## 実行
 
 ### Windows で使う
