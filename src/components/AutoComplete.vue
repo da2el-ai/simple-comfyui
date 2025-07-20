@@ -25,6 +25,10 @@ const cursorPosition = ref({ top: 0, left: 0 });
 const selectionStart = ref(0);
 const selectionEnd = ref(0);
 
+// カーソルからの補正座標定数
+const POS_FROM_CURSOR_X = 20; // カーソルから右に2文字分（約20px）
+const POS_FROM_CURSOR_Y = 20; // カーソル行の下（約20px）
+
 /**
  * テキストエリアの入力を監視する関数
  */
@@ -77,40 +81,75 @@ function calculateCursorPosition() {
   const textarea = props.targetElement;
   const { selectionStart } = textarea;
   
-  // カーソル位置の座標を計算するための一時的な要素
-  const mirror = document.createElement('div');
-  mirror.style.cssText = window.getComputedStyle(textarea).cssText;
-  mirror.style.height = 'auto';
-  mirror.style.position = 'absolute';
-  mirror.style.visibility = 'hidden';
-  mirror.style.whiteSpace = 'pre-wrap';
+  // テキストエリアの絶対位置を取得
+  const textareaRect = textarea.getBoundingClientRect();
+  // console.log('テキストエリア位置:', {
+  //   top: textareaRect.top,
+  //   left: textareaRect.left,
+  //   width: textareaRect.width,
+  //   height: textareaRect.height
+  // });
+  // console.log('テキストエリアスクロール:', {
+  //   scrollTop: textarea.scrollTop,
+  //   scrollLeft: textarea.scrollLeft
+  // });
   
-  // テキストエリアの内容をコピー
-  const textBeforeCursor = textarea.value.substring(0, selectionStart);
-  mirror.textContent = textBeforeCursor;
+  // 行の高さを取得
+  const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) || 20;
   
-  document.body.appendChild(mirror);
+  // カーソル位置の行番号を計算（改行文字で分割して長さを取得）
+  const lines = textarea.value.substring(0, selectionStart).split('\n');
+  const currentLineNumber = lines.length;
   
-  // カーソル位置の少し下に表示するために、行の高さ分だけ下にずらす
-  const lineHeight = parseInt(window.getComputedStyle(textarea).lineHeight) * 0.5 || 10;
-
-  // 候補リストの位置を計算
-  let left = mirror.clientWidth;
+  // カーソル位置の列番号を計算（最後の行の長さ）
+  const currentColumnNumber = lines[lines.length - 1].length;
   
-  // ウィンドウの右端を超えないように調整。150はmin-widthの値
+  // 文字幅を計算（一般的な等幅フォントでは行の高さの半分程度）
+  const charWidth = lineHeight / 2;
+  
+  // テキストエリアの左上からの相対位置を計算
+  const relativeTop = (currentLineNumber - 1) * lineHeight - textarea.scrollTop;
+  const relativeLeft = currentColumnNumber * charWidth - textarea.scrollLeft;
+  // console.log('テキストエリアからの相対位置:', {
+  //   relativeTop,
+  //   relativeLeft,
+  //   currentLineNumber,
+  //   currentColumnNumber,
+  //   lineHeight,
+  //   charWidth
+  // });
+  
+  // 最終的な座標を計算
+  const top = textareaRect.top + relativeTop;
+  const left = textareaRect.left + relativeLeft;
+  // console.log('計算後の座標:', { top, left });
+  
+  // 補正値を適用
+  const adjustedTop = top + POS_FROM_CURSOR_Y;
+  let adjustedLeft = left + POS_FROM_CURSOR_X;
+  // console.log('補正値:', {
+  //   POS_FROM_CURSOR_X,
+  //   POS_FROM_CURSOR_Y
+  // });
+  // console.log('補正後の座標:', {
+  //   adjustedTop,
+  //   adjustedLeft
+  // });
+  
+  // ウィンドウの右端を超えないように調整
   const suggestionsRect = suggestionsRef.value ? suggestionsRef.value.getBoundingClientRect() : {width:150};
   const viewportWidth = window.innerWidth;
   
-  if (left + suggestionsRect.width > viewportWidth) {
-    left = Math.max(0, viewportWidth - suggestionsRect.width);
+  if (adjustedLeft + suggestionsRect.width > viewportWidth) {
+    adjustedLeft = Math.max(0, viewportWidth - suggestionsRect.width);
+    // console.log('右端調整後の左座標:', adjustedLeft);
   }
-
-  cursorPosition.value = {
-    top: mirror.clientHeight + lineHeight,
-    left: left
-  };
   
-  document.body.removeChild(mirror);
+  cursorPosition.value = {
+    top: adjustedTop,
+    left: adjustedLeft
+  };
+  // console.log('最終座標:', cursorPosition.value);
 }
 
 /**
@@ -235,7 +274,7 @@ watch(() => props.targetElement, (newElement: HTMLTextAreaElement | null, oldEle
 
 <style scoped>
 .suggestions-container {
-  position: absolute;
+  position: fixed;
   z-index: 10;
   background-color: white;
   border: 1px solid #ccc;

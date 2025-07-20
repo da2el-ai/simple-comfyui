@@ -31,3 +31,5 @@ package-lock.json
 venv
 modules/__pycache__
 .rule
+.clinerules
+memory-bank
